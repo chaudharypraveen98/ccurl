@@ -7,9 +7,10 @@ use std::net::{TcpListener, TcpStream};
 use clap::{Arg, Command};
 use tokio::{self, stream};
 
-fn parse_url(url: &str) -> (&str, &str, &str, &str) {
+fn parse_url(url: &str) -> (&str, &str, &str, &str,String) {
     let (temp_protocol, rest) = url.split_once("://").unwrap();
     let (mut hostname, pathname) = rest.split_once("/").unwrap();
+    let socket_addr = hostname.to_string();
     let mut port = DEFAULT_PORT;
     if hostname.contains(":") {
         (hostname, port) = hostname.split_once(":").expect("Invalid hostname");
@@ -22,11 +23,7 @@ fn parse_url(url: &str) -> (&str, &str, &str, &str) {
             .get(temp_protocol)
             .expect("protocol string not defined")
     }
-    println!(
-        "protocol {} hostname {} pathname {} port {}",
-        protocol, hostname, pathname, port
-    );
-    return (protocol, hostname, port, pathname);
+    return (protocol, hostname, port, pathname,socket_addr);
 }
 fn populate_get_request(
     protocol: &str,
@@ -120,23 +117,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         headers = input_headers;
     };
     let method = matches.get_one::<String>("x-method");
-    let (protocol, hostname, port, pathname) = parse_url(url);
+    let (protocol, hostname, port, pathname,socket_addr) = parse_url(url);
     // fn populate_get_request(protocol: &str, host: &str, path: &[&str], data: Option<(&str, &str)>, method: Option<&str>) -> String {
-        println!("hostname -------- {}",hostname);
     let buffer_str = populate_get_request(protocol, hostname, &pathname, data, method);
-
-    let tcp_socket = TcpStream::connect(hostname);
+    let tcp_socket = TcpStream::connect(socket_addr);
     match tcp_socket {
         Ok(mut stream) => {
+            println!("Sending request {}",buffer_str);
+            stream.write(buffer_str.as_bytes())?;
             let mut buffer = [0; 1024];
             // this line reads data from the stream and stores it in the buffer.
             stream
                 .read(&mut buffer)
-                .expect("Failed to read from client!");
+                .expect("Failed to read from response from host!");
             // this line converts the data in the buffer into a UTF-8 enccoded string.
             let request = String::from_utf8_lossy(&buffer[..]);
-            println!("Received request: {}", request);
-            stream.write(buffer_str.as_bytes());
+            println!("{}", request);
+
             // std::thread::spawn(|| handle_client(stream,data));
         }
         Err(e) => {
