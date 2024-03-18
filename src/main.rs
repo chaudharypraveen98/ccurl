@@ -10,10 +10,12 @@ use tokio::{self, stream};
 fn parse_url(url: &str) -> (&str, &str, &str, &str,String) {
     let (temp_protocol, rest) = url.split_once("://").unwrap();
     let (mut hostname, pathname) = rest.split_once("/").unwrap();
-    let socket_addr = hostname.to_string();
+    let mut socket_addr = hostname.to_string();
     let mut port = DEFAULT_PORT;
     if hostname.contains(":") {
         (hostname, port) = hostname.split_once(":").expect("Invalid hostname");
+    } else {
+        socket_addr = format!("{}:{}",hostname,port)
     }
     let mut protocol = PROTOCOL_STRING
         .get("http")
