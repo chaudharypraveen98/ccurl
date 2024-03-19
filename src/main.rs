@@ -1,13 +1,11 @@
 mod constanst;
-use constanst::{DEFAULT_PORT, METHOD_TYPES, PROTOCOL_STRING};
-use std::collections::HashMap;
+use constanst::{DEFAULT_PORT, PROTOCOL_STRING};
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
 
 use clap::{Arg, Command};
-use tokio::{self, stream};
 
-fn parse_url(url: &str) -> (&str, &str, &str, &str,String) {
+fn parse_url(url: &str) -> (&str, &str, &str, &str, String) {
     let (temp_protocol, rest) = url.split_once("://").unwrap();
     let (mut hostname, pathname) = rest.split_once("/").unwrap();
     let mut socket_addr = hostname.to_string();
@@ -15,7 +13,7 @@ fn parse_url(url: &str) -> (&str, &str, &str, &str,String) {
     if hostname.contains(":") {
         (hostname, port) = hostname.split_once(":").expect("Invalid hostname");
     } else {
-        socket_addr = format!("{}:{}",hostname,port)
+        socket_addr = format!("{}:{}", hostname, port)
     }
     let mut protocol = PROTOCOL_STRING
         .get("http")
@@ -25,7 +23,7 @@ fn parse_url(url: &str) -> (&str, &str, &str, &str,String) {
             .get(temp_protocol)
             .expect("protocol string not defined")
     }
-    return (protocol, hostname, port, pathname,socket_addr);
+    return (protocol, hostname, port, pathname, socket_addr);
 }
 fn populate_get_request(
     protocol: &str,
@@ -56,25 +54,27 @@ fn populate_get_request(
     res
 }
 
-fn handle_client(mut stream: TcpStream) {
-    // this is a buffer to read data from the client
-    let mut buffer = [0; 1024];
-    // this line reads data from the stream and stores it in the buffer.
-    stream
-        .read(&mut buffer)
-        .expect("Failed to read from client!");
-    // this line converts the data in the buffer into a UTF-8 enccoded string.
-    let request = String::from_utf8_lossy(&buffer[..]);
-    println!("Received request: {}", request);
-    let response = "Hello, Client!".as_bytes();
-    stream.write(response).expect("Failed to write response!");
+fn parse_resp(resp: &str) -> (&str, &str) {
+    let (response_header, response_data) = resp.split_once("\r\n\r\n").unwrap();
+    (response_header, response_data)
 }
-fn send_get(mut stream: TcpStream) {
-    let response = "Hello, Client!".as_bytes();
-    stream
-        .write_all(response)
-        .expect("Failed to write response!");
-}
+
+
+
+// TODO: This function will used for creating TCP Server for accepting request
+// fn handle_client(mut stream: TcpStream) {
+//     // this is a buffer to read data from the client
+//     let mut buffer = [0; 1024];
+//     // this line reads data from the stream and stores it in the buffer.
+//     stream
+//         .read(&mut buffer)
+//         .expect("Failed to read from client!");
+//     // this line converts the data in the buffer into a UTF-8 enccoded string.
+//     let request = String::from_utf8_lossy(&buffer[..]);
+//     println!("Received request: {}", request);
+//     let response = "Hello, Client!".as_bytes();
+//     stream.write(response).expect("Failed to write response!");
+// }
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -114,18 +114,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let url = matches.get_one::<String>("url").unwrap();
     let data = matches.get_one::<String>("data");
-    let mut headers = "";
-    if let Some(input_headers) = matches.get_one::<String>("data") {
-        headers = input_headers;
-    };
+    // TODO: Need to add dynamic header support
+    // let headers = matches
+    //     .get_many::<&str>("headers");
     let method = matches.get_one::<String>("x-method");
-    let (protocol, hostname, port, pathname,socket_addr) = parse_url(url);
-    // fn populate_get_request(protocol: &str, host: &str, path: &[&str], data: Option<(&str, &str)>, method: Option<&str>) -> String {
+    let (protocol, hostname, port, pathname, socket_addr) = parse_url(url);
     let buffer_str = populate_get_request(protocol, hostname, &pathname, data, method);
     let tcp_socket = TcpStream::connect(socket_addr);
     match tcp_socket {
         Ok(mut stream) => {
-            println!("Sending request {}",buffer_str);
+            if verbose_enabled {
+                let lines = buffer_str.lines();
+                for line in lines {
+                    println!("> {}", line)
+                }
+            }
             stream.write(buffer_str.as_bytes())?;
             let mut buffer = [0; 1024];
             // this line reads data from the stream and stores it in the buffer.
@@ -133,57 +136,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .read(&mut buffer)
                 .expect("Failed to read from response from host!");
             // this line converts the data in the buffer into a UTF-8 enccoded string.
-            let request = String::from_utf8_lossy(&buffer[..]);
-            println!("{}", request);
+            let response = String::from_utf8_lossy(&buffer[..]);
+            let (response_header, response_data) = parse_resp(&response);
+            if verbose_enabled {
+                let lines = response_header.split("\r\n");
+                for line in lines {
+                    println!("< {}", line)
+                }
+            }
+            println!("{}", response_data);
 
             // std::thread::spawn(|| handle_client(stream,data));
         }
         Err(e) => {
             eprintln!("Failed to establish connection: {}", e);
-            // stderr - standard error stream
         }
     }
-    // let method = match given_method {
-    //     "POST" => Method::POST,
-    //     "DELETE" => Method::DELETE,
-    //     "PUT" => Method::PUT,
-    //     "PATCH" => Method::PATCH,
-    //     "GET" => Method::GET,
-    //     _ => {
-    //         eprintln!("INVALID METHOD");
-    //         panic!("INVALID METHOD")
-    //     }
-    // };
-    // let client = Client::new();
-    // let response = client.request(method, url).send().await.unwrap();
-    // let response = get_response(client, url, method).await;
-    // let issue_list_url = Url::parse(url)?;
-    // let transport_protocol: HashMap<&str, &str> = [("http", "HTTP/1.1"), ("https", "HTTP/2.0")]
-    //     .iter()
-    //     .cloned()
-    //     .collect();
-
-    // let schema = issue_list_url.scheme();
-    // let mut protocol = "HTTP/1.1";
-    // if let Some(value) = transport_protocol.get(schema) {
-    //     protocol = value;
-    // }
-    // if verbose_enabled {
-    //     println!(
-    //         "> {} {} {}\n> Host: {}\n> Accept: */*\n>",
-    //         given_method,
-    //         issue_list_url.path(),
-    //         protocol,
-    //         issue_list_url.host().unwrap().to_string()
-    //     );
-    //     println!("< {}: {}", protocol, response.status());
-    //     for (name, value) in response.headers().iter() {
-    //         println!("< {}: {:?}", name, value);
-    //     }
-    // }
-    // if response.status().is_success() {
-    //     println!("{:?}", response.text().await?);
-    // }
 
     Ok(())
 }
