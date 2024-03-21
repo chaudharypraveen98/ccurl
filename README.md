@@ -21,3 +21,21 @@ On Client Side : -
 3. **Send/Recv**: Once connection is established, when client can send and receive the data.
 
 
+We are doing to acheive in few steps: - 
+1. Getting the cli arguments
+2. Creation of socket connection
+3. Sending the request
+4. Parsing the response
+
+### 1. Getting the cli arguments.
+We will be using library for [Clap](https://crates.io/crates/clap) - A simple-to-use, efficient, and full-featured library for parsing command line arguments and subcommands.
+   
+
+### 2. Creation of socket connection
+
+### 3. Sending the request
+
+### 4. Parsing the response
+
+
+Hurray!! We have able to make our own curl.
