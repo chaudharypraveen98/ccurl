@@ -10,10 +10,3 @@ lazy_static! {
     };
 }
 pub const DEFAULT_PORT: &str = "80";
-pub static METHOD_TYPES: &[&str] = &[
-    "GET",
-    "POST",
-    "DELETE",
-    "PATCH",
-    "PUT",
-];

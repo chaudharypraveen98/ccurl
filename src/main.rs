@@ -1,29 +1,24 @@
-mod constanst;
 mod cli;
+mod constanst;
+use cli::get_arguments;
 use constanst::{DEFAULT_PORT, PROTOCOL_STRING};
 use std::io::{Read, Write};
 use std::net::TcpStream;
-use cli::get_arguments;
 
 fn parse_url(url: &str) -> (&str, &str, &str, String) {
-    let (temp_protocol, rest) = url.split_once("://").unwrap();
-    let (mut hostname, pathname) = rest.split_once("/").unwrap();
-    let mut socket_addr = hostname.to_string();
-    let port = DEFAULT_PORT;
-    if hostname.contains(":") {
-        (hostname, _) = hostname.split_once(":").expect("Invalid hostname");
-    } else {
-        socket_addr = format!("{}:{}", hostname, port)
-    }
-    let mut protocol = PROTOCOL_STRING
-        .get("http")
-        .expect("Unable to find http in protocol string hashmap");
-    if "http" != temp_protocol && PROTOCOL_STRING.contains_key(temp_protocol) {
-        protocol = PROTOCOL_STRING
-            .get(temp_protocol)
-            .expect("protocol string not defined")
-    }
-    return (protocol, hostname, pathname, socket_addr);
+    let (protocol, rest) = url.split_once("://").unwrap();
+    let (temp_hostname, pathname) = rest.split_once("/").unwrap();
+    let (hostname,port) = if temp_hostname.contains(":") {
+        temp_hostname.split_once(":").expect("Invalid hostname")
+    } else{
+        (temp_hostname,DEFAULT_PORT)
+    };
+    let socket_addr = format!("{}:{}", hostname, port);
+    let protocol_str = PROTOCOL_STRING
+        .get(protocol)
+        .expect("invalid protocol");
+
+    (protocol_str, hostname, pathname, socket_addr)
 }
 fn populate_get_request(
     protocol: &str,
@@ -31,17 +26,25 @@ fn populate_get_request(
     path: &str,
     data: Option<&String>,
     method: Option<&String>,
+    headers: Vec<&str>,
 ) -> String {
     let default_method = String::from("GET");
     let method = method.unwrap_or(&default_method);
     let mut res = String::new();
-    res += &format!("{} /{} {}\r\n", method, path, "HTTP/1.1");
+    res += &format!("{} /{} {}\r\n", method, path, protocol);
     res += &format!("Host: {}\r\n", host);
     res += "Accept: */*\r\n";
     res += "Connection: close\r\n";
 
     if method == "POST" || method == "PUT" {
-        res += "Content-Type: application/json\r\n";
+        if headers.len() > 0 {
+            for head in headers {
+                res += head;
+            }
+            res += "\r\n"
+        } else {
+            res += "Content-Type: application/json\r\n";
+        }
         if let Some(data_str) = data {
             let data_bytes = data_str.as_bytes();
             res += &format!("Content-Length: {}\r\n\r\n", data_bytes.len());
@@ -67,12 +70,14 @@ fn main() {
     let url = matches.get_one::<String>("url").unwrap();
     let data = matches.get_one::<String>("data");
     let method = matches.get_one::<String>("x-method");
-    // TODO: Need to add dynamic header support
-    // let headers = matches
-    //     .get_many::<&str>("headers");
-    
+    let headers: Vec<&str> = matches
+        .get_many::<String>("headers")
+        .unwrap_or_default()
+        .map(|s| s.as_str())
+        .collect();
+
     let (protocol, hostname, pathname, socket_addr) = parse_url(url);
-    let buffer_str = populate_get_request(protocol, hostname, &pathname, data, method);
+    let buffer_str = populate_get_request(protocol, hostname, &pathname, data, method, headers);
 
     let tcp_socket = TcpStream::connect(socket_addr);
 
@@ -84,7 +89,9 @@ fn main() {
                     println!("> {}", line)
                 }
             }
-            stream.write_all(buffer_str.as_bytes()).expect("Failed to write data to stream");
+            stream
+                .write_all(buffer_str.as_bytes())
+                .expect("Failed to write data to stream");
 
             // initialising the buffer, reads data from the stream and stores it in the buffer.
             let mut buffer = [0; 1024];

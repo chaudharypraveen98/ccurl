@@ -1,10 +1,9 @@
-use clap::{Arg, ArgMatches, Command};
+use clap::{Arg, ArgAction, ArgMatches, Command};
 
 pub fn get_arguments()-> ArgMatches{
     Command::new("Ccurl - custom curl")
         .about("It helps to make http methods")
         .version("1.0")
-        .disable_version_flag(true)
         .author("Praveen Chaudhary <chaudharypraveen98@gmail.com>")
         .arg(Arg::new("url").index(1).required(true))
         .arg(
@@ -23,7 +22,8 @@ pub fn get_arguments()-> ArgMatches{
             Arg::new("headers")
                 .help("Request header")
                 .long("header")
-                .short('H'),
+                .short('H')
+                .action(ArgAction::Append),
         )
         .arg(
             Arg::new("verbose")
