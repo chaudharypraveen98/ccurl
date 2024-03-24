@@ -2,23 +2,22 @@ mod cli;
 mod constanst;
 use cli::get_arguments;
 use constanst::{DEFAULT_PORT, PROTOCOL_STRING};
+use std::error::Error;
 use std::io::{Read, Write};
 use std::net::TcpStream;
 
-fn parse_url(url: &str) -> (&str, &str, &str, String) {
-    let (protocol, rest) = url.split_once("://").unwrap();
-    let (temp_hostname, pathname) = rest.split_once("/").unwrap();
-    let (hostname,port) = if temp_hostname.contains(":") {
-        temp_hostname.split_once(":").expect("Invalid hostname")
-    } else{
-        (temp_hostname,DEFAULT_PORT)
+fn parse_url(url: &str) -> Result<(&str, &str, &str, String), String> {
+    let (protocol, rest) = url.split_once("://").ok_or("Couldn't split the url")?;
+    let (temp_hostname, pathname) = rest.split_once("/").ok_or("Couldn't split the path name")?;
+    let (hostname, port) = if temp_hostname.contains(":") {
+        temp_hostname.split_once(":").ok_or("Invalid hostname")?
+    } else {
+        (temp_hostname, DEFAULT_PORT)
     };
     let socket_addr = format!("{}:{}", hostname, port);
-    let protocol_str = PROTOCOL_STRING
-        .get(protocol)
-        .expect("invalid protocol");
+    let protocol_str = PROTOCOL_STRING.get(protocol).ok_or("Invalid protocol")?;
 
-    (protocol_str, hostname, pathname, socket_addr)
+    Ok((protocol_str, hostname, pathname, socket_addr))
 }
 fn populate_get_request(
     protocol: &str,
@@ -57,17 +56,19 @@ fn populate_get_request(
     res
 }
 
-fn parse_resp(resp: &str) -> (&str, &str) {
-    let (response_header, response_data) = resp.split_once("\r\n\r\n").unwrap();
-    (response_header, response_data)
+fn parse_resp(resp: &str) -> Result<(&str, &str), String> {
+    let (response_header, response_data) = resp
+        .split_once("\r\n\r\n")
+        .ok_or("Error couldn't split the response")?;
+    Ok((response_header, response_data))
 }
 
-fn main() {
+fn main() -> Result<(), Box<dyn Error>> {
     let matches = get_arguments();
 
     // argument matching
     let verbose_enabled = matches.contains_id("verbose") && matches.get_flag("verbose");
-    let url = matches.get_one::<String>("url").unwrap();
+    let url = matches.get_one::<String>("url").ok_or("url is required")?;
     let data = matches.get_one::<String>("data");
     let method = matches.get_one::<String>("x-method");
     let headers: Vec<&str> = matches
@@ -76,7 +77,7 @@ fn main() {
         .map(|s| s.as_str())
         .collect();
 
-    let (protocol, hostname, pathname, socket_addr) = parse_url(url);
+    let (protocol, hostname, pathname, socket_addr) = parse_url(url)?;
     let buffer_str = populate_get_request(protocol, hostname, &pathname, data, method, headers);
 
     let tcp_socket = TcpStream::connect(socket_addr);
@@ -89,21 +90,17 @@ fn main() {
                     println!("> {}", line)
                 }
             }
-            stream
-                .write_all(buffer_str.as_bytes())
-                .expect("Failed to write data to stream");
+            stream.write_all(buffer_str.as_bytes())?;
 
             // initialising the buffer, reads data from the stream and stores it in the buffer.
             let mut buffer = [0; 1024];
-            stream
-                .read(&mut buffer)
-                .expect("Failed to read from response from host!");
+            stream.read(&mut buffer)?;
 
             // converts buffer data into a UTF-8 enccoded string (lossy ensures invalid data can be truncated).
             let response = String::from_utf8_lossy(&buffer[..]);
 
             // dividing the response headers and body
-            let (response_header, response_data) = parse_resp(&response);
+            let (response_header, response_data) = parse_resp(&response)?;
             if verbose_enabled {
                 let lines = response_header.split("\r\n");
                 for line in lines {
@@ -117,5 +114,5 @@ fn main() {
         }
     }
 
-    // Ok(())
+    Ok(())
 }
